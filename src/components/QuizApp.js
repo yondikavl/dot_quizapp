@@ -7,18 +7,29 @@ const QuizApp = () => {
   const [userAnswers, setUserAnswers] = useState([]);
   const [score, setScore] = useState(0);
   const [quizDone, setQuizDone] = useState(false);
-  const [timeLeft, setTimeLeft] = useState(60); // 60 seconds timer
+  const [timeLeft, setTimeLeft] = useState(60);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const savedState = JSON.parse(localStorage.getItem("quizState"));
-    if (savedState) {
+
+    const isValidState =
+      savedState &&
+      Array.isArray(savedState.quizData) &&
+      savedState.quizData.length > 0 &&
+      typeof savedState.currentQuestion === "number" &&
+      savedState.currentQuestion < savedState.quizData.length;
+
+    if (isValidState) {
       setQuizData(savedState.quizData);
       setCurrentQuestion(savedState.currentQuestion);
-      setUserAnswers(savedState.userAnswers);
-      setScore(savedState.score);
-      setQuizDone(savedState.quizDone);
-      setTimeLeft(savedState.timeLeft);
+      setUserAnswers(savedState.userAnswers || []);
+      setScore(savedState.score || 0);
+      setQuizDone(savedState.quizDone || false);
+      setTimeLeft(savedState.timeLeft || 60);
+      setLoading(false);
     } else {
+      localStorage.removeItem("quizState");
       fetchQuiz();
     }
   }, []);
@@ -40,28 +51,35 @@ const QuizApp = () => {
   }, [quizDone, quizData]);
 
   useEffect(() => {
-    localStorage.setItem(
-      "quizState",
-      JSON.stringify({
-        quizData,
-        currentQuestion,
-        userAnswers,
-        score,
-        quizDone,
-        timeLeft,
-      })
-    );
+    if (quizData.length > 0) {
+      localStorage.setItem(
+        "quizState",
+        JSON.stringify({
+          quizData,
+          currentQuestion,
+          userAnswers,
+          score,
+          quizDone,
+          timeLeft,
+        })
+      );
+    }
   }, [quizData, currentQuestion, userAnswers, score, quizDone, timeLeft]);
 
   const fetchQuiz = async () => {
-    const res = await axios.get(
-      "https://opentdb.com/api.php?amount=5&type=multiple"
-    );
-    const formatted = res.data.results.map((q) => ({
-      ...q,
-      allAnswers: shuffle([...q.incorrect_answers, q.correct_answer]),
-    }));
-    setQuizData(formatted);
+    try {
+      const res = await axios.get(
+        "https://opentdb.com/api.php?amount=5&type=multiple"
+      );
+      const formatted = res.data.results.map((q) => ({
+        ...q,
+        allAnswers: shuffle([...q.incorrect_answers, q.correct_answer]),
+      }));
+      setQuizData(formatted);
+      setLoading(false);
+    } catch (error) {
+      console.error("Failed to fetch quiz data:", error);
+    }
   };
 
   const shuffle = (array) => array.sort(() => Math.random() - 0.5);
@@ -88,10 +106,13 @@ const QuizApp = () => {
     setScore(0);
     setQuizDone(false);
     setTimeLeft(60);
+    setLoading(true);
     fetchQuiz();
   };
 
-  if (quizData.length === 0) return <div>Loading Quiz...</div>;
+  if (loading || quizData.length === 0 || !quizData[currentQuestion]) {
+    return <div>Loading Quiz...</div>;
+  }
 
   if (quizDone) {
     return (
@@ -118,25 +139,27 @@ const QuizApp = () => {
       <img
         src="/bg_quiz.svg"
         alt="Quiz"
-        className="absolute bottom-0 w-full md:w-auto md:h-5/6 left-0 object-cover opacity-50 z-0"
+        className="absolute bottom-0 w-full md:w-auto md:h-5/6 left-0 object-cover z-0"
       />
-      <div className="mb-4">Time Left: {timeLeft}s</div>
-      <h2
-        className="text-xl font-semibold mb-2"
-        dangerouslySetInnerHTML={{ __html: current.question }}
-      />
-      <div className="space-y-2 my-6">
-        {current.allAnswers.map((ans, idx) => (
-          <button
-            key={idx}
-            className="block w-full px-4 py-2 bg-gray-200 hover:bg-[#31ad0b] hover:text-white text-left"
-            onClick={() => handleAnswer(ans)}
-            dangerouslySetInnerHTML={{ __html: ans }}
-          />
-        ))}
-      </div>
-      <div className="mt-4 text-sm text-gray-500">
-        Question {currentQuestion + 1} of {quizData.length}
+      <div className="relative z-10">
+        <div className="mb-4">Time Left: {timeLeft}s</div>
+        <h2
+          className="text-xl font-semibold mb-2"
+          dangerouslySetInnerHTML={{ __html: current.question }}
+        />
+        <div className="space-y-2 my-6">
+          {current.allAnswers.map((ans, idx) => (
+            <button
+              key={idx}
+              className="block w-full px-4 py-2 bg-gray-200 hover:bg-[#31ad0b] hover:text-white text-left"
+              onClick={() => handleAnswer(ans)}
+              dangerouslySetInnerHTML={{ __html: ans }}
+            />
+          ))}
+        </div>
+        <div className="mt-4 text-sm text-gray-500">
+          Question {currentQuestion + 1} of {quizData.length}
+        </div>
       </div>
     </div>
   );
